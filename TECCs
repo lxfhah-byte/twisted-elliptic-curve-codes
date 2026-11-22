@@ -1,110 +1,37 @@
-Sage code: (even dimension cases)
-\begin{lstlisting}
-q=11
-F=GF(q)
-E=EllipticCurve(F,[0,0,0,1,1])
-Pts=[p for p in E if not p.is_zero()]
-D=Pts
-n=len(D)
-single_k = 4
-
-def eval_basis(k,ell,eta,pt):
-    xp,yp = pt[0], pt[1]
-    mi=k-2//2
-    mj=(k-4)//2
-    vec=[]
-    for i in range(mi+1):
-        vec.append(xp^i)
-    for j in range(mj+1):
-        vec.append((xp^j)*yp)
-    e=k//2
-    vec.append(xp^e+eta*(xp^mi)*yp)
-    return vec
-
-def codeGen(k,ell,eta):
-    rows=[]
-    for p in D:
-        rows.append(eval_basis(k,ell,eta,p))
-    M=matrix(F,rows)
-    Mr=M.rref()
-    new_rows=[]
-    for r in Mr:
-        if not r.is_zero():
-            new_rows.append(r)
-    if len(new_rows)==0:
-        return None
-    Mclean=matrix(F,new_rows)
-    return LinearCode(Mclean)
-
-cnt_k = 0
-if single_k +1 < n:
-    Lmax=single_k//2
-    for l in range(Lmax+1):
-        for t in F:
-            if t == 0:
+def tecc_counts(F, D, k, V):
+    D = [(F(x), F(y)) for x,y in D]
+    V = [tuple(F(s) for s in v) for v in V]
+    n = len(D)
+    assert len(set(D)) == n and 3 <= k and k+1 < n
+    assert len(set(V)) == len(V)
+    assert all(len(v) == n and all(v) for v in V)
+    def p(j, x, y):
+        return x**(j//2) if j%2 == 0 else y*x**((j-3)//2)
+    counts = [0]*5
+    top = [p(k+1,x,y) for x,y in D]
+    last = (k-3)//2 if k%2 else k//2
+    for ell in range(last+1):
+        h = 2*ell + (3 if k%2 else 0)
+        for eta in F:
+            if not eta:
                 continue
-            C=codeGen(single_k,l,t)
-            if not C:
-                continue
-            d=C.minimum_distance()
-            nd,kc=C.length(),C.dimension()
-            sd=nd-kc+1
-            if d == sd:
-                cnt_k +=1
-print(cnt_k,n)
-\end{lstlisting}
-(odd dimension cases)
-\begin{lstlisting}
-q=5
-    F = GF(q)
-E = EllipticCurve(F, [0,0,0,1,1])
-Pts = [p for p in E if not p.is_zero()]
-D = Pts
-n = len(D)
-single_k = 3
+            rows = [[p(j,x,y) + (eta*top[i] if j == h else 0)
+                     for i,(x,y) in enumerate(D)]
+                    for j in [0]+list(range(2,k+1))]
+            G = matrix(F,rows)
+            assert G.rank() == k and G.ncols() == n
+            d = min(sum(bool(z) for z in a*G)
+                    for a in VectorSpace(F,k) if any(a))
+            defect = n-k+1-d
+            assert defect in (0,1,2)
+            for v in V:
+                scaled = G*diagonal_matrix(F,v)
+                sd = (n == 2*k and (scaled*scaled.transpose()).is_zero())
+                counts[defect] += 1
+                counts[3] += int(sd)
+                counts[4] += int(sd and defect == 0)
+    return counts
 
-def eval_basis(k,ell,eta,pt):
-    xp,yp = pt[0], pt[1]
-    mi = (k-1)//2
-    mj = (k-5)//2
-    vec = []
-    for i in range(mi+1):
-        vec.append(xp^i)
-    for j in range(mj+1):
-        vec.append((xp^j)*yp)
-    e = (k+1)//2
-    s=(k-3)//2
-    vec.append( (xp^s)*yp+eta*(xp^e))
-    return vec
-
-def codeGen(k,ell,eta):
-    rows = []
-    for p in D:
-        rows.append(eval_basis(k,ell,eta,p))
-    M = matrix(F, rows)
-    Mr = M.rref()
-    new_rows = []
-    for r in Mr:
-        if not r.is_zero():
-            new_rows.append(r)
-    if len(new_rows) == 0:
-        return None
-    Mclean = matrix(F, new_rows)
-    return LinearCode(Mclean)
-
-cnt_k = 0
-if single_k + 1 < n:
-    Lmax = single_k//2
-    for l in range(Lmax+1):
-        for t in F:
-            if t == 0:
-                continue
-            C = codeGen(single_k,l,t)
-            if not C:
-                continue
-            d = C.minimum_distance()
-            nd,kc = C.length(), C.dimension()
-            sd = nd - kc + 1
-            if d == sd:
-                cnt_k += 1
-print(cnt_k,n)
+F = GF(5)
+D = [(x,y) for x in F for y in F if y*y == x**3+x+1]
+assert tecc_counts(F,D,3,[[1]*len(D)]) == [0,2,2,0,0]
